@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { insertIntoWebflowDesigner } from '@/lib/webflow-insert';
+import { generateWebflowElement, buildCopyableElement } from '@/lib/webflow-generator';
 import {
   relativeTime,
   engineLabel,
@@ -9,17 +9,16 @@ import {
 
 export function ExtensionPanel() {
   const [history, setHistory] = useState<GuideHistoryEntry[]>([]);
-  const [insertingId, setInsertingId] = useState<string | null>(null);
   const [statuses, setStatuses] = useState<Record<string, string>>({});
 
   // Poll the server-side store — bypasses Chrome's third-party Storage
-  // Partitioning that prevents localStorage sharing between this iframe
+  // Partitioning that blocks localStorage sharing between this iframe
   // (embedded in app.webflow.com) and the localhost:3001 browser tab.
   const refresh = useCallback(async () => {
     try {
       const res = await fetch('/api/guides');
       if (res.ok) setHistory(await res.json());
-    } catch {/* dev server not running yet */}
+    } catch {/* dev server may not be running yet */}
   }, []);
 
   useEffect(() => {
@@ -30,19 +29,37 @@ export function ExtensionPanel() {
 
   function setStatus(id: string, msg: string, ttl = 4000) {
     setStatuses((prev) => ({ ...prev, [id]: msg }));
-    if (ttl > 0) setTimeout(() => setStatuses((prev) => { const n = { ...prev }; delete n[id]; return n; }), ttl);
+    if (ttl > 0) {
+      setTimeout(() => setStatuses((prev) => {
+        const n = { ...prev };
+        delete n[id];
+        return n;
+      }), ttl);
+    }
   }
 
-  async function handleInsert(entry: GuideHistoryEntry) {
-    setInsertingId(entry.id);
-    setStatus(entry.id, 'Insertando...', 0);
+  async function handleCopyEmbed(entry: GuideHistoryEntry) {
     try {
-      await insertIntoWebflowDesigner(entry.guide);
-      setStatus(entry.id, '✅ Insertado');
-    } catch (err) {
-      setStatus(entry.id, `❌ ${(err as Error).message}`, 6000);
-    } finally {
-      setInsertingId(null);
+      const element = generateWebflowElement(entry.guide);
+      const copyable = buildCopyableElement(element);
+      await navigator.clipboard.writeText(copyable);
+      setStatus(entry.id, '✅ Copiado — pegá en un Embed block');
+    } catch {
+      setStatus(entry.id, '❌ No se pudo copiar', 5000);
+    }
+  }
+
+  async function handleCopyCSS(entry: GuideHistoryEntry) {
+    try {
+      const element = generateWebflowElement(entry.guide);
+      if (!element.css) {
+        setStatus(entry.id, '⚠️ No se encontró CSS', 4000);
+        return;
+      }
+      await navigator.clipboard.writeText(`<style>\n${element.css}\n</style>`);
+      setStatus(entry.id, '✅ CSS copiado — pegá en Page Settings > Head');
+    } catch {
+      setStatus(entry.id, '❌ No se pudo copiar', 5000);
     }
   }
 
@@ -57,9 +74,20 @@ export function ExtensionPanel() {
     card: '#1a1a1a',
     border: '#2a2a2a',
     indigo: '#6366f1',
+    green: '#22c55e',
     muted: '#666',
     text: '#e5e5e5',
   } as const;
+
+  const btnBase: React.CSSProperties = {
+    padding: '5px 8px',
+    borderRadius: 6,
+    border: 'none',
+    fontWeight: 600,
+    fontSize: 11,
+    cursor: 'pointer',
+    transition: 'all 0.15s',
+  };
 
   return (
     <div style={{
@@ -86,14 +114,22 @@ export function ExtensionPanel() {
         </div>
       </div>
 
+      {/* How-to hint */}
+      <div style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.18)', borderRadius: 7, padding: '8px 10px', fontSize: 10, color: '#a5b4fc', lineHeight: 1.6 }}>
+        <strong style={{ color: '#c7d2fe' }}>Cómo usar:</strong><br />
+        1. Copiá el código con el botón de abajo<br />
+        2. En Webflow: <strong style={{ color: '#c7d2fe' }}>Add &gt; Embed</strong>, pegá el HTML<br />
+        3. Para CSS: <strong style={{ color: '#c7d2fe' }}>Page Settings &gt; Custom Code &gt; Head</strong>
+      </div>
+
       {/* History list */}
       {history.length === 0 ? (
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px' }}>
           <div style={{ color: C.muted, fontSize: 11, marginBottom: 3 }}>Sin guías guardadas</div>
           <div style={{ color: '#444', fontSize: 10, lineHeight: 1.5 }}>
             Generá una guía en{' '}
-            <span style={{ color: C.indigo }}>localhost:3001</span>{' '}
-            y hacé click en "Preparar para Webflow".
+            <span style={{ color: C.indigo }}>localhost:3001</span>
+            {' '}y aparecerá aquí automáticamente.
           </div>
         </div>
       ) : (
@@ -102,10 +138,9 @@ export function ExtensionPanel() {
             Historial · {history.length} {history.length === 1 ? 'guía' : 'guías'}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: 'calc(100vh - 180px)', overflowY: 'auto' }}>
             {history.map((entry) => {
               const status = statuses[entry.id];
-              const isInserting = insertingId === entry.id;
 
               return (
                 <div
@@ -115,7 +150,6 @@ export function ExtensionPanel() {
                     border: `1px solid ${C.border}`,
                     borderRadius: 8,
                     padding: '9px 10px',
-                    transition: 'border-color 0.15s',
                   }}
                 >
                   {/* Name */}
@@ -132,59 +166,53 @@ export function ExtensionPanel() {
                   </div>
 
                   {/* Meta */}
-                  <div style={{ color: C.muted, fontSize: 10, marginBottom: 7 }}>
+                  <div style={{ color: C.muted, fontSize: 10, marginBottom: 8 }}>
                     {engineLabel(entry.engine)} · {relativeTime(entry.timestamp)}
                   </div>
 
-                  {/* Status / Actions */}
+                  {/* Status */}
                   {status ? (
                     <div style={{
                       fontSize: 10,
-                      padding: '4px 8px',
+                      padding: '5px 8px',
                       borderRadius: 5,
+                      lineHeight: 1.4,
                       background: status.startsWith('✅') ? 'rgba(34,197,94,0.08)' :
-                        status.startsWith('❌') ? 'rgba(239,68,68,0.1)' : 'rgba(99,102,241,0.08)',
+                        status.startsWith('❌') ? 'rgba(239,68,68,0.1)' :
+                        status.startsWith('⚠️') ? 'rgba(234,179,8,0.08)' : 'rgba(99,102,241,0.08)',
                       color: status.startsWith('✅') ? '#4ade80' :
-                        status.startsWith('❌') ? '#f87171' : '#a5b4fc',
+                        status.startsWith('❌') ? '#f87171' :
+                        status.startsWith('⚠️') ? '#fbbf24' : '#a5b4fc',
                       border: `1px solid ${status.startsWith('✅') ? 'rgba(34,197,94,0.2)' :
-                        status.startsWith('❌') ? 'rgba(239,68,68,0.2)' : 'rgba(99,102,241,0.2)'}`,
+                        status.startsWith('❌') ? 'rgba(239,68,68,0.2)' :
+                        status.startsWith('⚠️') ? 'rgba(234,179,8,0.2)' : 'rgba(99,102,241,0.2)'}`,
                     }}>
                       {status}
                     </div>
                   ) : (
                     <div style={{ display: 'flex', gap: '5px' }}>
+                      {/* Copy HTML+CSS embed */}
                       <button
-                        onClick={() => handleInsert(entry)}
-                        disabled={isInserting || insertingId !== null}
-                        style={{
-                          flex: 1,
-                          padding: '5px 0',
-                          borderRadius: 6,
-                          border: 'none',
-                          background: isInserting ? 'rgba(99,102,241,0.3)' : C.indigo,
-                          color: isInserting ? '#a5b4fc' : '#fff',
-                          fontWeight: 700,
-                          fontSize: 11,
-                          cursor: isInserting || insertingId !== null ? 'not-allowed' : 'pointer',
-                          transition: 'all 0.15s',
-                        }}
+                        onClick={() => handleCopyEmbed(entry)}
+                        style={{ ...btnBase, flex: 1, background: C.indigo, color: '#fff' }}
                       >
-                        {isInserting ? '⚙️ Insertando...' : '🎯 Insertar'}
+                        📋 Copiar HTML
                       </button>
 
+                      {/* Copy CSS only */}
+                      <button
+                        onClick={() => handleCopyCSS(entry)}
+                        style={{ ...btnBase, background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.25)' }}
+                        title="Copiar solo el CSS (para el &lt;head&gt;)"
+                      >
+                        CSS
+                      </button>
+
+                      {/* Delete */}
                       <button
                         onClick={() => handleDelete(entry.id)}
+                        style={{ ...btnBase, background: 'transparent', color: C.muted, border: `1px solid ${C.border}` }}
                         title="Eliminar"
-                        style={{
-                          padding: '5px 8px',
-                          borderRadius: 6,
-                          border: `1px solid ${C.border}`,
-                          background: 'transparent',
-                          color: C.muted,
-                          fontSize: 11,
-                          cursor: 'pointer',
-                          transition: 'all 0.15s',
-                        }}
                         onMouseEnter={(e) => {
                           (e.currentTarget as HTMLButtonElement).style.color = '#f87171';
                           (e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(239,68,68,0.4)';
@@ -205,16 +233,12 @@ export function ExtensionPanel() {
         </>
       )}
 
-      {/* Footer hint */}
-      <div style={{ color: '#333', fontSize: 10, textAlign: 'center', marginTop: 'auto', paddingTop: 4 }}>
-        Generá guías en localhost:3001
-      </div>
-
       <style>{`
         * { box-sizing: border-box; margin: 0; padding: 0; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 4px; }
+        button:hover:not(:disabled) { opacity: 0.85; }
       `}</style>
     </div>
   );
