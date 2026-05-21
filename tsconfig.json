@@ -18,6 +18,7 @@
         "name": "next"
       }
     ],
+    "types": ["@webflow/designer-extension-typings"],
     "paths": {
       "@/*": ["./*"]
     }

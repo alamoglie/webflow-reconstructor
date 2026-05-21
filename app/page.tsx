@@ -1,63 +1,328 @@
-import Image from "next/image";
+'use client';
+import { useState, useRef } from 'react';
+import { Toaster } from 'sonner';
+import { FileUploader } from '@/components/FileUploader';
+import { EngineSelector } from '@/components/EngineSelector';
+import { ApiKeyInput } from '@/components/ApiKeyInput';
+import { GuideOutput } from '@/components/GuideOutput';
+import { AIEngine, AIProvider, ApiKeys, ZipFiles, PROVIDERS } from '@/types';
+import { STREAM_ERROR_PREFIX } from '@/lib/ai/types';
+
+type InputMode = 'none' | 'code' | 'video' | 'images';
+
+const EMPTY_KEYS: ApiKeys = { anthropic: '', openai: '', openrouter: '' };
 
 export default function Home() {
+  const [engine, setEngine] = useState<AIEngine>('anthropic');
+  const [apiKeys, setApiKeys] = useState<ApiKeys>(EMPTY_KEYS);
+
+  const [inputMode, setInputMode] = useState<InputMode>('none');
+  const [codeFiles, setCodeFiles] = useState<ZipFiles>({});
+  const [frames, setFrames] = useState<string[]>([]);
+
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [guide, setGuide] = useState('');
+  const [compareResults, setCompareResults] = useState<Partial<Record<AIProvider, string>>>({});
+  const [error, setError] = useState('');
+
+  const outputRef = useRef<HTMLDivElement>(null);
+
+  function handleCodeFiles(files: ZipFiles) {
+    setCodeFiles(files);
+    setFrames([]);
+    setInputMode('code');
+    setGuide('');
+    setCompareResults({});
+    setError('');
+  }
+
+  function handleFrames(f: string[]) {
+    setFrames(f);
+    setCodeFiles({});
+    setInputMode('video');
+    setGuide('');
+    setCompareResults({});
+    setError('');
+  }
+
+  function handleImages(f: string[]) {
+    setFrames(f);
+    setCodeFiles({});
+    setInputMode('images');
+    setGuide('');
+    setCompareResults({});
+    setError('');
+  }
+
+  async function streamFromEndpoint(
+    url: string,
+    body: Record<string, unknown>,
+    onChunk: (text: string) => void
+  ): Promise<void> {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Error ${res.status}`);
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error('No response body');
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      buffer += chunk;
+
+      // Detect error written into the stream by the server
+      if (buffer.includes(STREAM_ERROR_PREFIX)) {
+        const errorMsg = buffer.split(STREAM_ERROR_PREFIX)[1]?.trim() ?? 'Error desconocido';
+        throw new Error(errorMsg);
+      }
+
+      onChunk(chunk);
+    }
+  }
+
+  async function analyze() {
+    setError('');
+
+    if (inputMode === 'none') {
+      setError('Por favor subí un archivo primero.');
+      return;
+    }
+
+    // Determine which providers will run
+    const providersToRun: AIProvider[] =
+      engine === 'compare' ? ['anthropic', 'openai'] : [engine as AIProvider];
+
+    // Validate API keys
+    for (const providerId of providersToRun) {
+      const meta = PROVIDERS.find((p) => p.id === providerId)!;
+      if (!apiKeys[meta.requiresKey]) {
+        const keyLabels: Record<keyof ApiKeys, string> = {
+          anthropic: 'API key de Anthropic',
+          openai: 'API key de OpenAI',
+          openrouter: 'API key de OpenRouter',
+        };
+        setError(`Ingresá tu ${keyLabels[meta.requiresKey]} para usar ${meta.label}.`);
+        return;
+      }
+    }
+
+    // Block visual analysis for providers without vision support
+    if (inputMode !== 'code') {
+      const noVision = providersToRun.filter(
+        (id) => !PROVIDERS.find((p) => p.id === id)?.supportsVision
+      );
+      if (noVision.length > 0) {
+        const labels = noVision
+          .map((id) => PROVIDERS.find((p) => p.id === id)?.label)
+          .join(', ');
+        setError(
+          `${labels} no soporta análisis visual. Subí un ZIP con código o elegí otro motor.`
+        );
+        return;
+      }
+    }
+
+    setIsAnalyzing(true);
+    setIsStreaming(true);
+    setGuide('');
+    setCompareResults({});
+
+    const endpoint =
+      inputMode === 'code' ? '/api/analyze-code' : '/api/analyze-visual';
+
+    const baseBody = {
+      ...(inputMode === 'code' ? { files: codeFiles } : { frames }),
+      anthropicApiKey: apiKeys.anthropic,
+      openaiApiKey: apiKeys.openai,
+      openrouterApiKey: apiKeys.openrouter,
+    };
+
+    try {
+      if (engine === 'compare') {
+        await Promise.all([
+          streamFromEndpoint(
+            endpoint,
+            { ...baseBody, provider: 'anthropic' },
+            (chunk) => {
+              setCompareResults((prev) => ({
+                ...prev,
+                anthropic: (prev.anthropic ?? '') + chunk,
+              }));
+            }
+          ),
+          streamFromEndpoint(
+            endpoint,
+            { ...baseBody, provider: 'openai' },
+            (chunk) => {
+              setCompareResults((prev) => ({
+                ...prev,
+                openai: (prev.openai ?? '') + chunk,
+              }));
+            }
+          ),
+        ]);
+      } else {
+        await streamFromEndpoint(
+          endpoint,
+          { ...baseBody, provider: engine },
+          (chunk) => setGuide((prev) => prev + chunk)
+        );
+      }
+
+      setTimeout(() => {
+        outputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setIsAnalyzing(false);
+      setIsStreaming(false);
+    }
+  }
+
+  const hasInput = inputMode !== 'none';
+  const hasOutput =
+    engine === 'compare'
+      ? Object.values(compareResults).some(Boolean)
+      : !!guide;
+
+  const currentProvider =
+    engine !== 'compare' ? PROVIDERS.find((p) => p.id === engine) : null;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-[#0f0f0f] text-white">
+      <Toaster theme="dark" richColors position="bottom-right" />
+
+      {/* Header */}
+      <header className="border-b border-[#1a1a1a] px-6 py-4 flex items-center justify-between sticky top-0 z-50 bg-[#0f0f0f]/90 backdrop-blur-md">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center text-sm font-bold">
+            W
+          </div>
+          <div>
+            <h1 className="font-bold text-sm tracking-tight">Webflow Reconstructor</h1>
+            <p className="text-xs text-gray-500">by Codegrid</p>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+          <span>
+            {engine === 'compare'
+              ? 'claude-opus-4-7 · gpt-4o'
+              : currentProvider?.model ?? engine}
+          </span>
+        </div>
+      </header>
+
+      {/* Main layout */}
+      <main className="max-w-7xl mx-auto px-4 py-8 lg:grid lg:grid-cols-[440px_1fr] lg:gap-8 lg:items-start">
+
+        {/* Left panel */}
+        <div className="space-y-5 lg:sticky lg:top-20">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight">Analizá tu interfaz</h2>
+            <p className="text-gray-400 text-sm mt-1">
+              Subí código, video o imágenes y generá una guía paso a paso para Webflow.
+            </p>
+          </div>
+
+          <FileUploader
+            onCodeFiles={handleCodeFiles}
+            onFrames={handleFrames}
+            onImages={handleImages}
+            isProcessing={isAnalyzing}
+          />
+
+          <EngineSelector value={engine} onChange={setEngine} />
+
+          <ApiKeyInput apiKeys={apiKeys} onChange={setApiKeys} />
+
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-400">
+              {error}
+            </div>
+          )}
+
+          <button
+            onClick={analyze}
+            disabled={isAnalyzing || !hasInput}
+            className={`w-full py-4 rounded-xl font-bold text-base transition-all ${
+              isAnalyzing
+                ? 'bg-indigo-500/40 text-indigo-300 cursor-not-allowed'
+                : hasInput
+                ? 'bg-indigo-500 hover:bg-indigo-400 text-white shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/30 active:scale-[0.98]'
+                : 'bg-[#1a1a1a] text-gray-600 cursor-not-allowed border border-[#2a2a2a]'
+            }`}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+            {isAnalyzing ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="animate-spin">⚙️</span>
+                Analizando...
+              </span>
+            ) : (
+              '🚀 Generar Guía Webflow'
+            )}
+          </button>
+
+          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-4 py-3 space-y-1.5">
+            <p className="text-xs font-medium text-gray-300">¿Qué podés subir?</p>
+            <ul className="text-xs text-gray-500 space-y-1">
+              <li>📦 <strong className="text-gray-400">ZIP</strong> con HTML, CSS, JS</li>
+              <li>🎬 <strong className="text-gray-400">Video</strong> MP4, WebM, MOV — frames extraídos automáticamente</li>
+              <li>🖼️ <strong className="text-gray-400">Imágenes</strong> PNG, JPG, WebP — múltiples a la vez</li>
+            </ul>
+          </div>
+        </div>
+
+        {/* Right panel */}
+        <div ref={outputRef} className="mt-8 lg:mt-0 space-y-4">
+          {!hasOutput && !isAnalyzing && (
+            <div className="border-2 border-dashed border-[#1a1a1a] rounded-2xl p-16 text-center space-y-3">
+              <div className="text-5xl opacity-20">📋</div>
+              <p className="text-gray-600 text-sm">
+                La guía de reconstrucción aparecerá aquí
+              </p>
+            </div>
+          )}
+
+          {isAnalyzing && !hasOutput && (
+            <div className="bg-[#1a1a1a] rounded-2xl border border-[#2a2a2a] p-8 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="animate-spin text-xl">⚙️</div>
+                <p className="text-indigo-300 font-medium">Generando guía...</p>
+              </div>
+              <div className="space-y-3 animate-pulse">
+                {[...Array(8)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="h-3 bg-[#2a2a2a] rounded"
+                    style={{ width: `${55 + (i * 7) % 40}%` }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(hasOutput || (isAnalyzing && hasOutput)) && (
+            <GuideOutput
+              guide={guide}
+              isStreaming={isStreaming}
+              engine={engine}
+              compareResults={compareResults}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          )}
         </div>
       </main>
     </div>
