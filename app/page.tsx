@@ -87,6 +87,19 @@ export default function Home() {
     setViewingEntry(null);
   }
 
+  // ── Server-store sync (fire-and-forget) ───────────────────────────────────
+  function pushToServer(entry: GuideHistoryEntry) {
+    fetch('/api/guides', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(entry),
+    }).catch(() => {/* non-critical */});
+  }
+
+  function deleteFromServer(id: string) {
+    fetch(`/api/guides/${id}`, { method: 'DELETE' }).catch(() => {/* non-critical */});
+  }
+
   // ── Streaming helper ───────────────────────────────────────────────────────
   async function streamFromEndpoint(
     url: string,
@@ -210,14 +223,16 @@ export default function Home() {
           ),
         ]);
 
-        // Auto-save both results to history
+        // Auto-save both results to history (localStorage + server)
         if (anthropicFull) {
           const e1 = saveToHistory(anthropicFull, 'anthropic');
           setHistory((prev) => [e1, ...prev]);
+          pushToServer(e1);
         }
         if (openaiFull) {
           const e2 = saveToHistory(openaiFull, 'openai');
           setHistory((prev) => [e2, ...prev]);
+          pushToServer(e2);
         }
       } else {
         let fullGuide = '';
@@ -230,10 +245,11 @@ export default function Home() {
           }
         );
 
-        // Auto-save to history
+        // Auto-save to history (localStorage + server)
         if (fullGuide) {
           const entry = saveToHistory(fullGuide, engine);
           setHistory((prev) => [entry, ...prev]);
+          pushToServer(entry);
         }
       }
 
@@ -261,6 +277,11 @@ export default function Home() {
   }
 
   function handleHistoryChange(updated: GuideHistoryEntry[]) {
+    // Find any IDs that were removed and sync deletion to the server
+    const removedIds = history
+      .map((e) => e.id)
+      .filter((id) => !updated.some((u) => u.id === id));
+    removedIds.forEach(deleteFromServer);
     setHistory(updated);
   }
 

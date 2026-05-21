@@ -2,33 +2,30 @@
 import { useState, useEffect, useCallback } from 'react';
 import { insertIntoWebflowDesigner } from '@/lib/webflow-insert';
 import {
-  loadHistory,
-  deleteHistoryEntry,
   relativeTime,
   engineLabel,
   GuideHistoryEntry,
 } from '@/lib/guide-history';
-
-const GUIDE_KEY = 'wfr_pending_guide';
 
 export function ExtensionPanel() {
   const [history, setHistory] = useState<GuideHistoryEntry[]>([]);
   const [insertingId, setInsertingId] = useState<string | null>(null);
   const [statuses, setStatuses] = useState<Record<string, string>>({});
 
-  const refresh = useCallback(() => {
-    setHistory(loadHistory());
+  // Poll the server-side store — bypasses Chrome's third-party Storage
+  // Partitioning that prevents localStorage sharing between this iframe
+  // (embedded in app.webflow.com) and the localhost:3001 browser tab.
+  const refresh = useCallback(async () => {
+    try {
+      const res = await fetch('/api/guides');
+      if (res.ok) setHistory(await res.json());
+    } catch {/* dev server not running yet */}
   }, []);
 
   useEffect(() => {
     refresh();
-    // Poll every 2s so new guides generated in the browser tab appear here
     const interval = setInterval(refresh, 2000);
-    window.addEventListener('storage', refresh);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('storage', refresh);
-    };
+    return () => clearInterval(interval);
   }, [refresh]);
 
   function setStatus(id: string, msg: string, ttl = 4000) {
@@ -42,8 +39,6 @@ export function ExtensionPanel() {
     try {
       await insertIntoWebflowDesigner(entry.guide);
       setStatus(entry.id, '✅ Insertado');
-      // Mark as the last used pending
-      localStorage.setItem(GUIDE_KEY, entry.guide);
     } catch (err) {
       setStatus(entry.id, `❌ ${(err as Error).message}`, 6000);
     } finally {
@@ -51,10 +46,10 @@ export function ExtensionPanel() {
     }
   }
 
-  function handleDelete(id: string) {
-    const updated = deleteHistoryEntry(id);
-    setHistory(updated);
+  async function handleDelete(id: string) {
+    setHistory((prev) => prev.filter((e) => e.id !== id));
     setStatuses((prev) => { const n = { ...prev }; delete n[id]; return n; });
+    try { await fetch(`/api/guides/${id}`, { method: 'DELETE' }); } catch {/* ok */}
   }
 
   const C = {
