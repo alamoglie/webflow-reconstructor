@@ -1,18 +1,31 @@
 'use client';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Toaster } from 'sonner';
 import { FileUploader } from '@/components/FileUploader';
 import { EngineSelector } from '@/components/EngineSelector';
 import { ApiKeyInput } from '@/components/ApiKeyInput';
 import { GuideOutput } from '@/components/GuideOutput';
+import { ExtensionPanel } from '@/components/ExtensionPanel';
+import { HistoryPanel } from '@/components/HistoryPanel';
 import { AIEngine, AIProvider, ApiKeys, ZipFiles, PROVIDERS } from '@/types';
 import { STREAM_ERROR_PREFIX } from '@/lib/ai/types';
+import {
+  loadHistory,
+  saveToHistory,
+  deleteHistoryEntry,
+  GuideHistoryEntry,
+  relativeTime,
+  engineLabel,
+} from '@/lib/guide-history';
 
 type InputMode = 'none' | 'code' | 'video' | 'images';
 
 const EMPTY_KEYS: ApiKeys = { anthropic: '', openai: '', openrouter: '' };
 
 export default function Home() {
+  // ── All hooks must come before any conditional returns ────────────────────
+  const [inDesigner, setInDesigner] = useState(false);
+
   const [engine, setEngine] = useState<AIEngine>('anthropic');
   const [apiKeys, setApiKeys] = useState<ApiKeys>(EMPTY_KEYS);
 
@@ -26,8 +39,24 @@ export default function Home() {
   const [compareResults, setCompareResults] = useState<Partial<Record<AIProvider, string>>>({});
   const [error, setError] = useState('');
 
+  // History
+  const [history, setHistory] = useState<GuideHistoryEntry[]>([]);
+  const [viewingEntry, setViewingEntry] = useState<GuideHistoryEntry | null>(null);
+
   const outputRef = useRef<HTMLDivElement>(null);
 
+  // Detect Designer context + load history on mount
+  useEffect(() => {
+    const isIframe = window.self !== window.top;
+    const hasWebflow = typeof (window as { webflow?: unknown }).webflow !== 'undefined';
+    setInDesigner(isIframe || hasWebflow);
+    setHistory(loadHistory());
+  }, []);
+
+  // ── Conditional render — safe because all hooks are above ─────────────────
+  if (inDesigner) return <ExtensionPanel />;
+
+  // ── Input handlers ─────────────────────────────────────────────────────────
   function handleCodeFiles(files: ZipFiles) {
     setCodeFiles(files);
     setFrames([]);
@@ -35,6 +64,7 @@ export default function Home() {
     setGuide('');
     setCompareResults({});
     setError('');
+    setViewingEntry(null);
   }
 
   function handleFrames(f: string[]) {
@@ -44,6 +74,7 @@ export default function Home() {
     setGuide('');
     setCompareResults({});
     setError('');
+    setViewingEntry(null);
   }
 
   function handleImages(f: string[]) {
@@ -53,8 +84,10 @@ export default function Home() {
     setGuide('');
     setCompareResults({});
     setError('');
+    setViewingEntry(null);
   }
 
+  // ── Streaming helper ───────────────────────────────────────────────────────
   async function streamFromEndpoint(
     url: string,
     body: Record<string, unknown>,
@@ -82,7 +115,6 @@ export default function Home() {
       const chunk = decoder.decode(value, { stream: true });
       buffer += chunk;
 
-      // Detect error written into the stream by the server
       if (buffer.includes(STREAM_ERROR_PREFIX)) {
         const errorMsg = buffer.split(STREAM_ERROR_PREFIX)[1]?.trim() ?? 'Error desconocido';
         throw new Error(errorMsg);
@@ -92,6 +124,7 @@ export default function Home() {
     }
   }
 
+  // ── Main analyze action ────────────────────────────────────────────────────
   async function analyze() {
     setError('');
 
@@ -100,11 +133,9 @@ export default function Home() {
       return;
     }
 
-    // Determine which providers will run
     const providersToRun: AIProvider[] =
       engine === 'compare' ? ['anthropic', 'openai'] : [engine as AIProvider];
 
-    // Validate API keys
     for (const providerId of providersToRun) {
       const meta = PROVIDERS.find((p) => p.id === providerId)!;
       if (!apiKeys[meta.requiresKey]) {
@@ -118,7 +149,6 @@ export default function Home() {
       }
     }
 
-    // Block visual analysis for providers without vision support
     if (inputMode !== 'code') {
       const noVision = providersToRun.filter(
         (id) => !PROVIDERS.find((p) => p.id === id)?.supportsVision
@@ -138,6 +168,7 @@ export default function Home() {
     setIsStreaming(true);
     setGuide('');
     setCompareResults({});
+    setViewingEntry(null);
 
     const endpoint =
       inputMode === 'code' ? '/api/analyze-code' : '/api/analyze-visual';
@@ -151,11 +182,15 @@ export default function Home() {
 
     try {
       if (engine === 'compare') {
+        let anthropicFull = '';
+        let openaiFull = '';
+
         await Promise.all([
           streamFromEndpoint(
             endpoint,
             { ...baseBody, provider: 'anthropic' },
             (chunk) => {
+              anthropicFull += chunk;
               setCompareResults((prev) => ({
                 ...prev,
                 anthropic: (prev.anthropic ?? '') + chunk,
@@ -166,6 +201,7 @@ export default function Home() {
             endpoint,
             { ...baseBody, provider: 'openai' },
             (chunk) => {
+              openaiFull += chunk;
               setCompareResults((prev) => ({
                 ...prev,
                 openai: (prev.openai ?? '') + chunk,
@@ -173,12 +209,32 @@ export default function Home() {
             }
           ),
         ]);
+
+        // Auto-save both results to history
+        if (anthropicFull) {
+          const e1 = saveToHistory(anthropicFull, 'anthropic');
+          setHistory((prev) => [e1, ...prev]);
+        }
+        if (openaiFull) {
+          const e2 = saveToHistory(openaiFull, 'openai');
+          setHistory((prev) => [e2, ...prev]);
+        }
       } else {
+        let fullGuide = '';
         await streamFromEndpoint(
           endpoint,
           { ...baseBody, provider: engine },
-          (chunk) => setGuide((prev) => prev + chunk)
+          (chunk) => {
+            fullGuide += chunk;
+            setGuide((prev) => prev + chunk);
+          }
         );
+
+        // Auto-save to history
+        if (fullGuide) {
+          const entry = saveToHistory(fullGuide, engine);
+          setHistory((prev) => [entry, ...prev]);
+        }
       }
 
       setTimeout(() => {
@@ -192,11 +248,42 @@ export default function Home() {
     }
   }
 
-  const hasInput = inputMode !== 'none';
+  // ── History callbacks ──────────────────────────────────────────────────────
+  function handleViewEntry(entry: GuideHistoryEntry) {
+    setViewingEntry(entry);
+    setTimeout(() => {
+      outputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  }
+
+  function handleBackToLatest() {
+    setViewingEntry(null);
+  }
+
+  function handleHistoryChange(updated: GuideHistoryEntry[]) {
+    setHistory(updated);
+  }
+
+  // Called when CopyElementButton saves (standalone mode already saved on copy,
+  // but this keeps the history list fresh in case it wasn't auto-saved yet)
+  function handleSaved() {
+    setHistory(loadHistory());
+  }
+
+  // ── Derived state ──────────────────────────────────────────────────────────
   const hasOutput =
     engine === 'compare'
       ? Object.values(compareResults).some(Boolean)
       : !!guide;
+
+  const isViewingHistory = !!viewingEntry;
+
+  // What to show in the output area
+  const outputGuide = isViewingHistory ? viewingEntry!.guide : guide;
+  const outputEngine = (isViewingHistory ? viewingEntry!.engine : engine) as AIEngine;
+  const outputCompare = isViewingHistory ? {} : compareResults;
+
+  const showOutput = hasOutput || isViewingHistory;
 
   const currentProvider =
     engine !== 'compare' ? PROVIDERS.find((p) => p.id === engine) : null;
@@ -257,11 +344,11 @@ export default function Home() {
 
           <button
             onClick={analyze}
-            disabled={isAnalyzing || !hasInput}
+            disabled={isAnalyzing || inputMode === 'none'}
             className={`w-full py-4 rounded-xl font-bold text-base transition-all ${
               isAnalyzing
                 ? 'bg-indigo-500/40 text-indigo-300 cursor-not-allowed'
-                : hasInput
+                : inputMode !== 'none'
                 ? 'bg-indigo-500 hover:bg-indigo-400 text-white shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/30 active:scale-[0.98]'
                 : 'bg-[#1a1a1a] text-gray-600 cursor-not-allowed border border-[#2a2a2a]'
             }`}
@@ -288,7 +375,9 @@ export default function Home() {
 
         {/* Right panel */}
         <div ref={outputRef} className="mt-8 lg:mt-0 space-y-4">
-          {!hasOutput && !isAnalyzing && (
+
+          {/* Empty state — only when nothing to show */}
+          {!showOutput && !isAnalyzing && history.length === 0 && (
             <div className="border-2 border-dashed border-[#1a1a1a] rounded-2xl p-16 text-center space-y-3">
               <div className="text-5xl opacity-20">📋</div>
               <p className="text-gray-600 text-sm">
@@ -297,6 +386,7 @@ export default function Home() {
             </div>
           )}
 
+          {/* Loading skeleton */}
           {isAnalyzing && !hasOutput && (
             <div className="bg-[#1a1a1a] rounded-2xl border border-[#2a2a2a] p-8 space-y-4">
               <div className="flex items-center gap-3">
@@ -315,12 +405,25 @@ export default function Home() {
             </div>
           )}
 
-          {(hasOutput || (isAnalyzing && hasOutput)) && (
+          {/* Guide output */}
+          {(showOutput || (isAnalyzing && hasOutput)) && (
             <GuideOutput
-              guide={guide}
-              isStreaming={isStreaming}
-              engine={engine}
-              compareResults={compareResults}
+              guide={outputGuide}
+              isStreaming={isStreaming && !isViewingHistory}
+              engine={outputEngine}
+              compareResults={outputCompare}
+              historyLabel={isViewingHistory ? viewingEntry!.name : undefined}
+              onSaved={handleSaved}
+              onBackToLatest={handleBackToLatest}
+            />
+          )}
+
+          {/* History panel — always shown when entries exist */}
+          {!isAnalyzing && (
+            <HistoryPanel
+              history={history}
+              onHistoryChange={handleHistoryChange}
+              onViewGuide={handleViewEntry}
             />
           )}
         </div>

@@ -11,6 +11,10 @@ interface Props {
   isStreaming: boolean;
   engine: AIEngine;
   compareResults?: Partial<Record<AIProvider, string>>;
+  /** optional banner label when viewing a historical entry */
+  historyLabel?: string;
+  onSaved?: () => void;
+  onBackToLatest?: () => void;
 }
 
 function CodeBlock({ children, language }: { children: string; language: string }) {
@@ -142,7 +146,7 @@ function GuideContent({ guide, isStreaming }: { guide: string; isStreaming: bool
   );
 }
 
-export function GuideOutput({ guide, isStreaming, engine, compareResults }: Props) {
+export function GuideOutput({ guide, isStreaming, engine, compareResults, historyLabel, onSaved, onBackToLatest }: Props) {
   const compareTabs = PROVIDERS.filter(
     (p) => compareResults && compareResults[p.id] !== undefined
   );
@@ -156,6 +160,9 @@ export function GuideOutput({ guide, isStreaming, engine, compareResults }: Prop
     const activeGuide = compareResults?.[activeTab] ?? '';
     return (
       <div className="space-y-4">
+        {historyLabel && (
+          <HistoryBanner label={historyLabel} onBack={onBackToLatest} />
+        )}
         <div className="flex gap-2 flex-wrap">
           {compareTabs.map((p) => (
             <button
@@ -177,7 +184,7 @@ export function GuideOutput({ guide, isStreaming, engine, compareResults }: Prop
         </div>
 
         {!isStreaming && activeGuide && (
-          <CopyElementButton guide={activeGuide} />
+          <CopyElementButton guide={activeGuide} engine={engine} onSaved={onSaved} />
         )}
       </div>
     );
@@ -185,11 +192,36 @@ export function GuideOutput({ guide, isStreaming, engine, compareResults }: Prop
 
   return (
     <div className="space-y-4">
+      {historyLabel && (
+        <HistoryBanner label={historyLabel} onBack={onBackToLatest} />
+      )}
       <div className="bg-[#0f0f0f] rounded-xl border border-[#2a2a2a] p-6">
         <GuideContent guide={guide} isStreaming={isStreaming} />
       </div>
 
-      {!isStreaming && guide && <CopyElementButton guide={guide} />}
+      {!isStreaming && guide && (
+        <CopyElementButton guide={guide} engine={engine} onSaved={onSaved} />
+      )}
+    </div>
+  );
+}
+
+// ── History banner shown when viewing a saved entry ───────────────────────────
+function HistoryBanner({ label, onBack }: { label: string; onBack?: () => void }) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-500/8 border border-amber-500/20 rounded-xl">
+      <span className="text-amber-400 text-sm">📚</span>
+      <span className="text-amber-300 text-xs flex-1 truncate">
+        Viendo: <strong>{label}</strong>
+      </span>
+      {onBack && (
+        <button
+          onClick={onBack}
+          className="text-xs text-gray-400 hover:text-white transition-colors shrink-0"
+        >
+          ← Última guía
+        </button>
+      )}
     </div>
   );
 }

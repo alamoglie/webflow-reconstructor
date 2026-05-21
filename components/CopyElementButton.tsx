@@ -3,12 +3,16 @@ import { useState, useEffect } from 'react';
 import { generateWebflowElement, buildCopyableElement } from '@/lib/webflow-generator';
 import { isInsideWebflowDesigner, insertIntoWebflowDesigner } from '@/lib/webflow-insert';
 import { toast } from 'sonner';
+import { saveToHistory } from '@/lib/guide-history';
 
 interface Props {
   guide: string;
+  engine?: string;
+  /** called after successfully setting the pending entry (so parent can sync history) */
+  onSaved?: () => void;
 }
 
-export function CopyElementButton({ guide }: Props) {
+export function CopyElementButton({ guide, engine = 'unknown', onSaved }: Props) {
   const [copied, setCopied] = useState(false);
   const [inserting, setInserting] = useState(false);
   const [inDesigner, setInDesigner] = useState(false);
@@ -34,20 +38,29 @@ export function CopyElementButton({ guide }: Props) {
     }
   }
 
-  // ── Outside Designer: copy embed code to clipboard ──
+  // ── Outside Designer: save to localStorage for the extension + copy embed ──
   async function handleCopy() {
     try {
       const element = generateWebflowElement(guide);
       const copyable = buildCopyableElement(element);
+
+      // Save for the Designer Extension to pick up
+      localStorage.setItem('wfr_pending_element', copyable);
+      localStorage.setItem('wfr_pending_guide', guide);
+
+      // Persist to history
+      saveToHistory(guide, engine);
+      onSaved?.();
+
       await navigator.clipboard.writeText(copyable);
       setCopied(true);
-      toast.success('¡Código copiado!', {
-        description: 'Pegalo en un Embed block de Webflow.',
-        duration: 4000,
+      toast.success('¡Preparado para Webflow!', {
+        description: 'Abrí el panel en el Designer y hacé click en "Insertar".',
+        duration: 5000,
       });
       setTimeout(() => setCopied(false), 2500);
     } catch {
-      toast.error('No se pudo copiar. Intentá de nuevo.');
+      toast.error('No se pudo preparar. Intentá de nuevo.');
     }
   }
 
@@ -89,8 +102,8 @@ export function CopyElementButton({ guide }: Props) {
               : 'bg-indigo-500 hover:bg-indigo-400 text-white shadow-lg shadow-indigo-500/20'
           }`}
         >
-          <span>{copied ? '✅' : '📋'}</span>
-          <span>{copied ? '¡Copiado!' : 'Copiar Embed Code'}</span>
+          <span>{copied ? '✅' : '🎯'}</span>
+          <span>{copied ? '¡Listo! Abrí el Designer' : 'Preparar para Webflow'}</span>
         </button>
       )}
 
