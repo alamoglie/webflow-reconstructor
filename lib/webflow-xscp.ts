@@ -11,6 +11,7 @@
  */
 
 import { generateWebflowElement } from '@/lib/webflow-generator';
+import { htmlCssToXscp } from '@/lib/html-to-xscp';
 
 // ── Minimal UUID-style ID ────────────────────────────────────────────────────
 function makeId(): string {
@@ -83,15 +84,32 @@ export function buildHtmlEmbedXscp(html: string, css: string, js: string): strin
 
 /**
  * Extracts HTML/CSS/JS from a markdown guide and returns Xscp JSON string.
+ *
+ * Primary path  → native Webflow elements (Block / Heading / Link / Image …)
+ *                  via htmlCssToXscp (browser-only, uses DOMParser).
+ * Fallback path → single HtmlEmbed node (works everywhere, preserves JS).
+ *
  * Returns null if the guide has no extractable code blocks.
  */
 export function buildXscpFromGuide(guide: string): string | null {
   const element = generateWebflowElement(guide);
-  const hasContent =
-    element.html.trim() &&
+
+  const hasHtml =
+    element.html.trim().length > 0 &&
     !element.html.includes('<!-- HTML no detectado');
 
-  if (!hasContent && !element.css.trim() && !element.js.trim()) return null;
+  if (!hasHtml && !element.css.trim() && !element.js.trim()) return null;
 
+  // ── Native path (browser only) ───────────────────────────────────────────
+  if (hasHtml && typeof window !== 'undefined') {
+    try {
+      const result = htmlCssToXscp(element.html, element.css);
+      if (result?.xscp) return result.xscp;
+    } catch {
+      // fall through to HtmlEmbed
+    }
+  }
+
+  // ── Fallback: HtmlEmbed ──────────────────────────────────────────────────
   return buildHtmlEmbedXscp(element.html, element.css, element.js);
 }
