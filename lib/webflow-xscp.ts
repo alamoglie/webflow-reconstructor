@@ -104,12 +104,16 @@ export function buildXscpFromGuide(guide: string): string | null {
   if (hasHtml && typeof window !== 'undefined') {
     try {
       const result = htmlCssToXscp(element.html, element.css);
+      console.debug('[webflow-xscp] native result:', result ? `${result.nodeCount} nodes, ${result.styleCount} styles` : 'null');
       if (result?.xscp) return result.xscp;
-    } catch {
-      // fall through to HtmlEmbed
+    } catch (err) {
+      console.warn('[webflow-xscp] native path failed, falling back to HtmlEmbed:', err);
     }
+  } else {
+    console.debug('[webflow-xscp] skipping native path — hasHtml:', hasHtml, 'window:', typeof window);
   }
 
   // ── Fallback: HtmlEmbed ──────────────────────────────────────────────────
+  console.debug('[webflow-xscp] using HtmlEmbed fallback');
   return buildHtmlEmbedXscp(element.html, element.css, element.js);
 }

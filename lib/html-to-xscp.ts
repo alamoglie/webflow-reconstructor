@@ -261,11 +261,21 @@ export function htmlCssToXscp(html: string, css: string): XscpConvertResult | nu
   }));
 
   // 3. Parse HTML
+  // Normalise: strip any top-level <style>/<script>/<link> tags that
+  // DOMParser would hoist into <head>, leaving body children empty.
+  const bodyOnlyHtml = html
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<link[^>]*>/gi, '')
+    .trim();
+
   const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
+  const doc = parser.parseFromString(bodyOnlyHtml || html, 'text/html');
 
   const nodes: XscpNode[] = [];
   const topLevel = Array.from(doc.body.children);
+
+  console.debug('[html-to-xscp] topLevel count:', topLevel.length, '| styleMap size:', styleMap.size);
 
   if (topLevel.length === 0) return null;
 
