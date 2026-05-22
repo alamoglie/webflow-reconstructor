@@ -4,7 +4,7 @@ import { generateWebflowElement, buildCopyableElement } from '@/lib/webflow-gene
 import { isInsideWebflowDesigner } from '@/lib/webflow-insert';
 import { toast } from 'sonner';
 import { saveToHistory } from '@/lib/guide-history';
-import { buildXscpFromGuide } from '@/lib/webflow-xscp';
+import { buildXscpFromGuide, lastXscpPath } from '@/lib/webflow-xscp';
 import { writeClipboardXscp } from 'webflow-clipboard';
 
 interface Props {
@@ -33,8 +33,9 @@ export function CopyElementButton({ guide, engine = 'unknown', onSaved }: Props)
     try {
       writeClipboardXscp(xscp);
       setPasteStatus('ok');
+      const path = lastXscpPath();
       toast.success('¡Listo para pegar en Webflow!', {
-        description: 'Abrí Webflow Designer, hacé click en el canvas y presioná Cmd+V (Mac) o Ctrl+V (Windows).',
+        description: `Formato: ${path === 'native' ? '✅ Elementos nativos (Block/Heading/etc.)' : '⚠️ HTML Embed (fallback)'} — Cmd+V en el canvas.`,
         duration: 6000,
       });
       setTimeout(() => setPasteStatus('idle'), 4000);

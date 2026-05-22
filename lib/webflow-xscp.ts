@@ -13,6 +13,10 @@
 import { generateWebflowElement } from '@/lib/webflow-generator';
 import { htmlCssToXscp } from '@/lib/html-to-xscp';
 
+// Exposed so UI components can read which path was last used
+let _lastPath: 'native' | 'embed' = 'embed';
+export function lastXscpPath(): 'native' | 'embed' { return _lastPath; }
+
 // ── Minimal UUID-style ID ────────────────────────────────────────────────────
 function makeId(): string {
   const s = () => Math.random().toString(36).slice(2, 10).padEnd(8, '0');
@@ -105,7 +109,7 @@ export function buildXscpFromGuide(guide: string): string | null {
     try {
       const result = htmlCssToXscp(element.html, element.css);
       console.debug('[webflow-xscp] native result:', result ? `${result.nodeCount} nodes, ${result.styleCount} styles` : 'null');
-      if (result?.xscp) return result.xscp;
+      if (result?.xscp) { _lastPath = 'native'; return result.xscp; }
     } catch (err) {
       console.warn('[webflow-xscp] native path failed, falling back to HtmlEmbed:', err);
     }
@@ -115,5 +119,6 @@ export function buildXscpFromGuide(guide: string): string | null {
 
   // ── Fallback: HtmlEmbed ──────────────────────────────────────────────────
   console.debug('[webflow-xscp] using HtmlEmbed fallback');
+  _lastPath = 'embed';
   return buildHtmlEmbedXscp(element.html, element.css, element.js);
 }

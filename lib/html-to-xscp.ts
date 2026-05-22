@@ -156,27 +156,20 @@ function wfType(tag: string): string {
 
 function buildData(el: Element): Record<string, unknown> {
   const tag = el.tagName.toLowerCase();
-  const base: Record<string, unknown> = { tag };
+
+  // Collect all HTML attributes (Webflow stores them in data.attr)
+  const attr: Record<string, string> = {};
+  for (const { name, value } of Array.from(el.attributes)) {
+    if (name === 'class') continue; // handled via classes array
+    attr[name] = value;
+  }
+
+  const base: Record<string, unknown> = { tag, attr };
 
   if (tag === 'a') {
     const href = el.getAttribute('href') ?? '#';
     const isAnchor = href.startsWith('#');
-    base.attr = { href };
     base.link = { url: href, mode: isAnchor ? 'section' : 'external' };
-  }
-
-  if (tag === 'img') {
-    base.attr = {
-      src: el.getAttribute('src') ?? '',
-      alt: el.getAttribute('alt') ?? '',
-      loading: 'lazy',
-    };
-  }
-
-  if (tag === 'input' || tag === 'textarea') {
-    const placeholder = el.getAttribute('placeholder');
-    const type = el.getAttribute('type') ?? 'text';
-    base.attr = { type, ...(placeholder ? { placeholder } : {}) };
   }
 
   return base;
