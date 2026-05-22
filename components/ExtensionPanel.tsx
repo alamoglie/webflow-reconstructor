@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { generateWebflowElement, buildCopyableElement } from '@/lib/webflow-generator';
+import { buildXscpFromGuide } from '@/lib/webflow-xscp';
+import { writeClipboardXscp } from 'webflow-clipboard';
 import {
   relativeTime,
   engineLabel,
@@ -38,28 +39,17 @@ export function ExtensionPanel() {
     }
   }
 
-  async function handleCopyEmbed(entry: GuideHistoryEntry) {
-    try {
-      const element = generateWebflowElement(entry.guide);
-      const copyable = buildCopyableElement(element);
-      await navigator.clipboard.writeText(copyable);
-      setStatus(entry.id, '✅ Copiado — pegá en un Embed block');
-    } catch {
-      setStatus(entry.id, '❌ No se pudo copiar', 5000);
+  function handleCopyXscp(entry: GuideHistoryEntry) {
+    const xscp = buildXscpFromGuide(entry.guide);
+    if (!xscp) {
+      setStatus(entry.id, '⚠️ No se encontraron bloques de código', 4000);
+      return;
     }
-  }
-
-  async function handleCopyCSS(entry: GuideHistoryEntry) {
     try {
-      const element = generateWebflowElement(entry.guide);
-      if (!element.css) {
-        setStatus(entry.id, '⚠️ No se encontró CSS', 4000);
-        return;
-      }
-      await navigator.clipboard.writeText(`<style>\n${element.css}\n</style>`);
-      setStatus(entry.id, '✅ CSS copiado — pegá en Page Settings > Head');
+      writeClipboardXscp(xscp);
+      setStatus(entry.id, '✅ ¡Listo! Cmd+V en Webflow Designer');
     } catch {
-      setStatus(entry.id, '❌ No se pudo copiar', 5000);
+      setStatus(entry.id, '❌ No se pudo copiar al portapapeles', 5000);
     }
   }
 
@@ -117,9 +107,9 @@ export function ExtensionPanel() {
       {/* How-to hint */}
       <div style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.18)', borderRadius: 7, padding: '8px 10px', fontSize: 10, color: '#a5b4fc', lineHeight: 1.6 }}>
         <strong style={{ color: '#c7d2fe' }}>Cómo usar:</strong><br />
-        1. Copiá el código con el botón de abajo<br />
-        2. En Webflow: <strong style={{ color: '#c7d2fe' }}>Add &gt; Embed</strong>, pegá el HTML<br />
-        3. Para CSS: <strong style={{ color: '#c7d2fe' }}>Page Settings &gt; Custom Code &gt; Head</strong>
+        1. Hacé click en <strong style={{ color: '#c7d2fe' }}>⌘ Copiar</strong><br />
+        2. Abrí <strong style={{ color: '#c7d2fe' }}>Webflow Designer</strong><br />
+        3. Hacé click en el canvas y presioná <strong style={{ color: '#c7d2fe' }}>Cmd+V</strong>
       </div>
 
       {/* History list */}
@@ -191,21 +181,12 @@ export function ExtensionPanel() {
                     </div>
                   ) : (
                     <div style={{ display: 'flex', gap: '5px' }}>
-                      {/* Copy HTML+CSS embed */}
+                      {/* Copy as Xscp — Cmd+V in Webflow Designer */}
                       <button
-                        onClick={() => handleCopyEmbed(entry)}
+                        onClick={() => handleCopyXscp(entry)}
                         style={{ ...btnBase, flex: 1, background: C.indigo, color: '#fff' }}
                       >
-                        📋 Copiar HTML
-                      </button>
-
-                      {/* Copy CSS only */}
-                      <button
-                        onClick={() => handleCopyCSS(entry)}
-                        style={{ ...btnBase, background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.25)' }}
-                        title="Copiar solo el CSS (para el &lt;head&gt;)"
-                      >
-                        CSS
+                        ⌘ Copiar · Cmd+V en Webflow
                       </button>
 
                       {/* Delete */}
