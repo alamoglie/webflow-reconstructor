@@ -11,12 +11,26 @@ REGLAS CRÍTICAS:
 6. El objetivo es que el usuario pueda seguir la guía sin volver al código original
 
 ESTRUCTURA OBLIGATORIA DE LA GUÍA:
+
 ## 1. ESTRUCTURA DE SECCIONES
 [Jerarquía de divs, nombres en Navigator, tipos de elementos en Webflow]
 
+OBLIGATORIO: incluí un bloque de código HTML completo con TODAS las clases CSS aplicadas,
+usando exactamente los mismos nombres de clase que en la sección 2.
+El bloque debe poder copiarse y pegarse directamente. Formato:
+\`\`\`html
+<div class="...">
+  ...
+</div>
+\`\`\`
+
 ## 2. SISTEMA DE CLASES CSS
 [Tabla con: clase | tipo | propiedades CSS exactas]
-[Bloque <style> completo listo para pegar en el Head de Webflow]
+
+OBLIGATORIO: incluí un bloque CSS completo con TODAS las clases. Formato:
+\`\`\`css
+.clase { ... }
+\`\`\`
 
 ## 3. ANIMACIONES / INTERACTIVIDAD
 [Si hay GSAP: reescribir con data-gsap attributes]
