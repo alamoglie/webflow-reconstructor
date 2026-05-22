@@ -269,8 +269,27 @@ export function htmlCssToXscp(html: string, css: string): XscpConvertResult | nu
 
   if (topLevel.length === 0) return null;
 
-  for (const el of topLevel) {
-    walkNode(el, styleMap, nodes);
+  // Webflow requires exactly ONE root node in the pasted payload.
+  // If there are multiple top-level siblings we always wrap them in a
+  // single Block so the Designer never sees "more than one root".
+  if (topLevel.length === 1) {
+    walkNode(topLevel[0], styleMap, nodes);
+  } else {
+    const wrapperId = uid();
+    const wrapperNode: XscpNode = {
+      _id: wrapperId,
+      tag: 'div',
+      type: 'Block',
+      classes: [],
+      children: [],
+      data: { tag: 'div' },
+    };
+    nodes.push(wrapperNode);
+
+    for (const el of topLevel) {
+      const childId = walkNode(el, styleMap, nodes);
+      wrapperNode.children!.push(childId);
+    }
   }
 
   if (nodes.length === 0) return null;
