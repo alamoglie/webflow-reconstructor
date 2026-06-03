@@ -76,10 +76,13 @@ export function engineLabel(engine: string): string {
   const map: Record<string, string> = {
     anthropic: '🟣 Claude',
     openai: '🟢 GPT-4o',
+    gemini: '🔵 Gemini',
+    'gemini-or': '🔷 Gemini (OR)',
     openrouter: '🔶 OpenRouter',
     compare: '⚖️ Compare',
-    deepseek: '🔵 DeepSeek',
+    deepseek: '🟠 DeepSeek',
     llama: '🦙 Llama',
+    kimi: '🌙 Kimi',
   };
   return map[engine] ?? `✦ ${engine}`;
 }

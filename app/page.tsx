@@ -20,7 +20,7 @@ import {
 
 type InputMode = 'none' | 'code' | 'video' | 'images';
 
-const EMPTY_KEYS: ApiKeys = { anthropic: '', openai: '', openrouter: '' };
+const EMPTY_KEYS: ApiKeys = { anthropic: '', openai: '', google: '', openrouter: '' };
 
 export default function Home() {
   // ── All hooks must come before any conditional returns ────────────────────
@@ -155,6 +155,7 @@ export default function Home() {
         const keyLabels: Record<keyof ApiKeys, string> = {
           anthropic: 'API key de Anthropic',
           openai: 'API key de OpenAI',
+          google: 'API key de Google AI Studio',
           openrouter: 'API key de OpenRouter',
         };
         setError(`Ingresá tu ${keyLabels[meta.requiresKey]} para usar ${meta.label}.`);
@@ -190,6 +191,7 @@ export default function Home() {
       ...(inputMode === 'code' ? { files: codeFiles } : { frames }),
       anthropicApiKey: apiKeys.anthropic,
       openaiApiKey: apiKeys.openai,
+      googleApiKey: apiKeys.google,
       openrouterApiKey: apiKeys.openrouter,
     };
 

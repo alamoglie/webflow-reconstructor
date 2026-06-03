@@ -5,7 +5,7 @@ import { streamFromAsyncIterable } from '../stream';
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
 /**
- * Handles Gemini, DeepSeek, and Qwen via the OpenRouter API.
+ * Handles Gemini (OR), DeepSeek, Llama, and Kimi via the OpenRouter API.
  * OpenRouter exposes an OpenAI-compatible interface, so we reuse the OpenAI SDK
  * with a custom baseURL and the user's OpenRouter key.
  */

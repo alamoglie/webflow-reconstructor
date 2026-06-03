@@ -2,9 +2,9 @@
 import { useState, useEffect } from 'react';
 import { ApiKeys } from '@/types';
 
-const STORAGE_KEY = 'wfr_api_keys_v2';
+const STORAGE_KEY = 'wfr_api_keys_v3';
 
-const EMPTY: ApiKeys = { anthropic: '', openai: '', openrouter: '' };
+const EMPTY: ApiKeys = { anthropic: '', openai: '', google: '', openrouter: '' };
 
 interface Props {
   apiKeys: ApiKeys;
@@ -30,26 +30,46 @@ const FIELDS: {
     hint: 'platform.openai.com',
   },
   {
+    key: 'google',
+    label: 'Gemini Flash (Google AI Studio)',
+    placeholder: 'AIzaSy...',
+    hint: 'aistudio.google.com/apikey · tier free',
+  },
+  {
     key: 'openrouter',
-    label: 'OpenRouter — Gemini · DeepSeek · Qwen',
+    label: 'OpenRouter — Gemini OR · DeepSeek · Llama · Kimi',
     placeholder: 'sk-or-...',
-    hint: 'openrouter.ai/keys · tiene tier gratuito',
+    hint: 'openrouter.ai/keys',
   },
 ];
+
+function migrateKeys(raw: Partial<ApiKeys>): ApiKeys {
+  return {
+    anthropic: raw.anthropic ?? '',
+    openai: raw.openai ?? '',
+    google: raw.google ?? '',
+    openrouter: raw.openrouter ?? '',
+  };
+}
 
 export function ApiKeyInput({ apiKeys, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const [show, setShow] = useState<Record<keyof ApiKeys, boolean>>({
     anthropic: false,
     openai: false,
+    google: false,
     openrouter: false,
   });
 
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
+    const saved =
+      localStorage.getItem(STORAGE_KEY) ??
+      localStorage.getItem('wfr_api_keys_v2');
     if (saved) {
       try {
-        onChange(JSON.parse(saved));
+        const migrated = migrateKeys(JSON.parse(saved));
+        onChange(migrated);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
       } catch {
         // ignore malformed storage
       }
@@ -65,6 +85,7 @@ export function ApiKeyInput({ apiKeys, onChange }: Props) {
   function clearKeys() {
     onChange(EMPTY);
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem('wfr_api_keys_v2');
   }
 
   const hasAnyKey = Object.values(apiKeys).some(Boolean);

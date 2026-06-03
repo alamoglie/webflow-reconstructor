@@ -4,7 +4,7 @@ import { generate } from '@/lib/ai/generate';
 import { SYSTEM_PROMPT, buildVisualPrompt } from '@/lib/prompts';
 
 export async function POST(req: NextRequest) {
-  const { frames, provider, anthropicApiKey, openaiApiKey, openrouterApiKey } =
+  const { frames, provider, anthropicApiKey, openaiApiKey, googleApiKey, openrouterApiKey } =
     await req.json();
 
   if (!frames || frames.length === 0) {
@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
   const apiKeys: ApiKeys = {
     anthropic: anthropicApiKey ?? '',
     openai: openaiApiKey ?? '',
+    google: googleApiKey ?? '',
     openrouter: openrouterApiKey ?? '',
   };
 

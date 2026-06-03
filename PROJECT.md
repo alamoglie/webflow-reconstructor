@@ -37,9 +37,11 @@ Creado en el contexto de los tutoriales de **Codegrid** sobre GSAP y Webflow.
 |----------|--------|-------|--------|-----|
 | `anthropic` | `claude-opus-4-7` | No | ✅ | Anthropic |
 | `openai` | `gpt-4o` | No | ✅ | OpenAI |
-| `gemini` | `google/gemini-2.0-flash-exp:free` | ✅ | ✅ | OpenRouter |
-| `deepseek` | `deepseek/deepseek-r1:free` | ✅ | ❌ | OpenRouter |
-| `qwen` | `qwen/qwen3-235b-a22b:free` | ✅ | ❌ | OpenRouter |
+| `gemini` | `gemini-flash-latest` | ✅ (AI Studio) | ✅ | Google AI Studio |
+| `gemini-or` | `google/gemini-2.5-flash` | No | ✅ | OpenRouter |
+| `deepseek` | `deepseek/deepseek-v4-flash` | No | ❌ | OpenRouter |
+| `llama` | `meta-llama/llama-3.3-70b-instruct:free` | ✅ | ❌ | OpenRouter |
+| `kimi` | `moonshotai/kimi-k2.6` | No | ✅ | OpenRouter |
 
 Modo `compare`: corre `anthropic` + `openai` en paralelo con tabs comparativos.
 
@@ -59,7 +61,7 @@ app/
 components/
   FileUploader.tsx          — Drag & drop para ZIP, video e imágenes
   EngineSelector.tsx        — Grid 3x2: 5 providers + botón Compare
-  ApiKeyInput.tsx           — Inputs para 3 keys (Anthropic, OpenAI, OpenRouter)
+  ApiKeyInput.tsx           — Inputs para 4 keys (Anthropic, OpenAI, Google, OpenRouter)
   GuideOutput.tsx           — Render Markdown + tabs dinámicos por provider
   CopyElementButton.tsx     — Copiar/descargar la guía generada
   FramePreview.tsx          — Preview de frames extraídos del video
@@ -73,7 +75,8 @@ lib/
     providers/
       anthropic.ts          — Claude via @anthropic-ai/sdk
       openai.ts             — GPT-4o via openai SDK
-      openrouter.ts         — Gemini/DeepSeek/Qwen via OpenRouter (openai-compat)
+      gemini.ts             — Gemini Flash via Google AI Studio (REST SSE)
+      openrouter.ts         — Gemini OR, DeepSeek, Llama, Kimi via OpenRouter
   prompts.ts                — SYSTEM_PROMPT + buildCodePrompt + buildVisualPrompt
   video-processor.ts        — FFmpeg WASM: extrae N frames de un video
   zip-processor.ts          — JSZip: descomprime y filtra archivos de texto
@@ -108,7 +111,7 @@ Validación en page.tsx:
         ↓
 fetch POST a /api/analyze-code  (si ZIP)
      o /api/analyze-visual      (si frames/imágenes)
-  body: { files|frames, provider, anthropicApiKey, openaiApiKey, openrouterApiKey }
+  body: { files|frames, provider, anthropicApiKey, openaiApiKey, googleApiKey, openrouterApiKey }
         ↓
 API Route → generate() en lib/ai/generate.ts
   → validación de key

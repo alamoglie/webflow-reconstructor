@@ -2,6 +2,7 @@ export type AIProvider =
   | 'anthropic'
   | 'openai'
   | 'gemini'
+  | 'gemini-or'
   | 'deepseek'
   | 'llama'
   | 'kimi';
@@ -11,7 +12,8 @@ export type AIEngine = AIProvider | 'compare';
 export interface ApiKeys {
   anthropic: string;
   openai: string;
-  openrouter: string; // cubre gemini, deepseek, qwen via OpenRouter
+  google: string; // Google AI Studio — Gemini directo
+  openrouter: string; // DeepSeek, Llama, Kimi, Gemini vía OpenRouter
 }
 
 export interface ProviderMeta {
@@ -46,9 +48,19 @@ export const PROVIDERS: ProviderMeta[] = [
   {
     id: 'gemini',
     label: 'Gemini Flash',
-    // google/gemini-3-flash-preview: $0.50/$3 per 1M, multimodal, 1M context
-    model: 'google/gemini-3-flash-preview',
+    // Google AI Studio directo — ver aistudio.google.com/apikey
+    model: 'gemini-flash-latest',
     icon: '🔵',
+    free: true,
+    supportsVision: true,
+    requiresKey: 'google',
+  },
+  {
+    id: 'gemini-or',
+    label: 'Gemini (OR)',
+    // OpenRouter slug verificado: openrouter.ai/google/gemini-2.5-flash
+    model: 'google/gemini-2.5-flash',
+    icon: '🔷',
     free: false,
     supportsVision: true,
     requiresKey: 'openrouter',

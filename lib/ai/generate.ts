@@ -12,6 +12,7 @@ interface GenerateOptions {
 const KEY_LABELS: Record<keyof ApiKeys, string> = {
   anthropic: 'API key de Anthropic',
   openai: 'API key de OpenAI',
+  google: 'API key de Google AI Studio',
   openrouter: 'API key de OpenRouter',
 };
 

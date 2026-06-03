@@ -1,0 +1,34 @@
+---
+description: Mantener PROJECT.md actualizado cuando se hacen cambios significativos al proyecto
+alwaysApply: true
+---
+
+# Mantener PROJECT.md actualizado
+
+`PROJECT.md` es el archivo de contexto principal del proyecto para IAs. Debe reflejar el estado real del código en todo momento.
+
+## Cuándo actualizar PROJECT.md
+
+Actualizar el archivo cuando se hagan cambios que afecten:
+
+- **Stack técnico**: nueva dependencia, cambio de versión relevante, remoción de paquete
+- **Estructura de archivos**: nuevo archivo, renombrado, eliminado, nueva carpeta
+- **Flujo de datos**: cambio en cómo se procesa el input o el output
+- **Motores de IA**: nuevo modelo, nuevo proveedor, cambio de parámetros
+- **Estado del proyecto**: completar un ítem pendiente o agregar uno nuevo a la lista de `[ ]`
+- **Detalles técnicos importantes**: límites, configs, URLs externas, convenciones
+
+## Qué NO actualizar
+
+- Cambios de estilo/CSS sin impacto arquitectural
+- Fixes de bugs menores que no cambian el flujo
+- Cambios en textos de UI
+
+## Formato de la sección de estado
+
+```markdown
+- [x] Feature completada
+- [ ] Feature pendiente
+```
+
+Mantener la sección **## Estado Actual** al final del archivo siempre sincronizada con lo que realmente existe en el código.

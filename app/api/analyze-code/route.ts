@@ -4,7 +4,7 @@ import { generate } from '@/lib/ai/generate';
 import { SYSTEM_PROMPT, buildCodePrompt } from '@/lib/prompts';
 
 export async function POST(req: NextRequest) {
-  const { files, provider, anthropicApiKey, openaiApiKey, openrouterApiKey } =
+  const { files, provider, anthropicApiKey, openaiApiKey, googleApiKey, openrouterApiKey } =
     await req.json();
 
   if (!files || Object.keys(files).length === 0) {
@@ -14,6 +14,7 @@ export async function POST(req: NextRequest) {
   const apiKeys: ApiKeys = {
     anthropic: anthropicApiKey ?? '',
     openai: openaiApiKey ?? '',
+    google: googleApiKey ?? '',
     openrouter: openrouterApiKey ?? '',
   };
 
